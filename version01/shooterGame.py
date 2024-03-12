@@ -15,13 +15,17 @@ FONT_NAME = pg.font.match_font("BatmanForeverAlternate")# Font name
 # Color Constants
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
+SUPER_DARK_GREY = (15, 15, 15)
 DARK_GREY = (30, 30, 30)
-LIGHT_GREY = (49, 49, 49)
+MODERATE_GREY = (49, 49, 49)
+LIGHT_GREY = (126, 126, 126)
 RED = (255, 0, 0)
 LIGHT_GREEN = (70, 255, 51)
 GREEN = (5, 107, 0)
 BLUE = (0, 143, 230)
+LIGHT_BLUE = (0, 255, 255)
 PURPLE = (138, 1, 206)
+YELLOW = (255, 255, 0)
 
 
 class Player(pg.sprite.Sprite): # Player class based on the pre-defined pygame sprite class
@@ -50,7 +54,7 @@ class Player(pg.sprite.Sprite): # Player class based on the pre-defined pygame s
         self.maxHP = floor(100 * exp((self.level - 1)/50)) # Defaulted to 100
         self.currentHP = self.maxHP
         self.damage = 2
-        self.cash = 100000
+        self.cash = 100 # Default cash starts at 100
 
     def update(self):
         '''Update player state'''
@@ -137,13 +141,14 @@ class PlayerBullet(pg.sprite.Sprite): # Player's Bullet
         self.rect = self.image.get_rect(center = self.rect.center)
 
 class Enemy(pg.sprite.Sprite): # Parent sprite for all types of enemies
-    def __init__(self, imageName, dimensions, name):
+    def __init__(self, imageName, dimensions, name, game):
         pg.sprite.Sprite.__init__(self)
         self.dir = pg.image.load(path.join(IMG_DIR, imageName)).convert()
         self.image = pg.transform.scale(self.dir, dimensions)# Image directory
         self.image.set_colorkey(BLACK)
         self.rect = self.image.get_rect() # Get the hitbox of the enemy
         self.radius = int(self.rect.width * 0.8 / 2)
+        self.game = game
 
         '''Properties in game'''
         self.name = name
@@ -153,6 +158,12 @@ class Enemy(pg.sprite.Sprite): # Parent sprite for all types of enemies
         self.resultantSpeed = "Normal"
         self.speedx = 0
         self.speedy = 0
+        self.maxHP = 4
+        self.currentHP = self.maxHP
+
+        '''Minibar'''
+        self.miniBar = StatsBar(PURPLE, BLACK, 20, 30, self.game.screen, 300, 20, self.currentHP, self.maxHP, "HP", self.rect.width // 2, 2, False)
+        self.miniBar.draw("Minibar")
 
     def update(self):
         '''Update enemy state'''
@@ -162,24 +173,22 @@ class Enemy(pg.sprite.Sprite): # Parent sprite for all types of enemies
             self.rect.x = random.randrange(0, (SCREEN_WIDTH // 2) - self.rect.width + 1)
             self.rect.bottom = random.randrange(-80, -20)
 
+
 # Types of enemies
 class Bloon(Enemy):
     def __init__(self):
-        super().__init__("Balloon.png", (100, 100), "Bloon")
-
+        super().__init__("Balloon.png", (100, 100), "Bloon", gameObject)
         '''Specific Properties to Bloon'''
         self.moveAngle = radians(random.randrange(-30, 31))
         self.speedx = self.speedRanges[self.resultantSpeed] * sin(self.moveAngle)
         self.speedy = self.speedRanges[self.resultantSpeed] * cos(self.moveAngle)
-        self.maxHP = 4
-        self.currentHP = self.maxHP
 
     def update(self):
         '''Update Bloon state'''
         super().update()
-
+    
 class StatsBar: # Class for all bars drawn
-    def __init__(self, fillColour, bgColour, x, y, surface, barLength, barHeight, param1, param2, barType, textX, textY):
+    def __init__(self, fillColour, bgColour, x, y, surface, barLength, barHeight, param1, param2, barType, textX, textY, drawText):
         self.fillColour = fillColour
         self.bgColour = bgColour
         self.xPos = x
@@ -190,11 +199,13 @@ class StatsBar: # Class for all bars drawn
         self.param1 = param1
         self.param2 = param2
         self.barType = barType
+        self.drawText = drawText
         self.textX = textX
         self.textY = textY
-
-    def draw(self):
+        
+    def draw(self, text):
         '''Draw and update the stats bar when necessary'''
+        print(text)
         percentage = self.param1 / self.param2
         if percentage < 0:
             percentage = 0
@@ -205,8 +216,9 @@ class StatsBar: # Class for all bars drawn
         pg.draw.rect(self.surface, self.bgColour, backgroundRect)
         pg.draw.rect(self.surface, self.fillColour, fillRect)
         pg.draw.rect(self.surface, WHITE, outlineRect, width = 5)
-        textToBeDrawn = str(self.param1) + "/" + str(self.param2) + " " + self.barType
-        drawText(self.surface, textToBeDrawn, WHITE, 25, True, self.textX, self.textY)
+        if self.drawText == True:
+            textToBeDrawn = str(self.param1) + "/" + str(self.param2) + " " + self.barType
+            drawText(self.surface, textToBeDrawn, WHITE, 25, True, self.textX, self.textY)
 
 class Game: # Main class that initialises everything required for the game, manages the main game loop and 
     def __init__ (self): 
@@ -247,6 +259,7 @@ class Game: # Main class that initialises everything required for the game, mana
                     enemy.kill()
                     self.enemies.remove(enemy)
                     self.spawnEnemies() # Spawn a mob when it is hit
+
         playerHits = pg.sprite.spritecollide(self.player, self.enemies, True, pg.sprite.collide_circle) # Better to use circle collisions so that the player is hit only when the enemy graphic touches the player
         for hit in playerHits:
             self.player.currentHP -= hit.currentHP
@@ -272,16 +285,12 @@ class Game: # Main class that initialises everything required for the game, mana
         '''Method that draws everything needed to be put into the interface'''
         # Title
         self.drawTitle()
-        # Player
+        # Player Stats Box
         self.drawPlayerStats()
-
-        # Check if the mouse has touched an enemy
-        mouseLocation = pg.mouse.get_pos()
-        for enemy in self.enemies:
-            if enemy.rect.collidepoint(mouseLocation):
-                drawText(self.interfaceBackgroundSurface, enemy.name, WHITE, 30, False, 100, 550)
-                self.enemyHealthBar = StatsBar(PURPLE, BLACK, 100, 600, self.interfaceBackgroundSurface, 400, 20, enemy.currentHP, enemy.maxHP, "HP", 300, 602)
-                self.enemyHealthBar.draw()
+        # Enhancement Modules Box
+        self.drawUpgradeBox()
+        # Enemy Stats Box
+        self.drawEnemyStats()
      
     def drawTitle(self):
         '''Method that draws title interface'''
@@ -291,24 +300,64 @@ class Game: # Main class that initialises everything required for the game, mana
         '''Method that draws player interface'''
         self.playerStatsBox = pg.Rect(80, 90, 440, 240)
         self.playerStatsBoxSurface = self.interfaceBackgroundSurface.subsurface(self.playerStatsBox)
-        self.playerStatsBoxSurface.fill(LIGHT_GREY)
+        self.playerStatsBoxSurface.fill(MODERATE_GREY)
         self.playerStatsBoxRect = pg.Rect(75, 85, 450, 245)
         pg.draw.rect(self.interfaceBackgroundSurface, WHITE, self.playerStatsBoxRect, width = 5)
-        drawText(self.playerStatsBoxSurface, "Ship Status", WHITE, 30, True, 220, 20)
-        self.playerHealthBar = StatsBar(GREEN, RED, 20, 60, self.playerStatsBoxSurface, 400, 20, self.player.currentHP, self.player.maxHP, "HP", 220, 62)
-        self.playerHealthBar.draw()
-        self.playerEXPBar = StatsBar(BLUE, BLACK, 20, 120, self.playerStatsBoxSurface, 400, 20, self.player.currentEXP, self.player.maxExp, "EXP", 220, 122)
-        self.playerEXPBar.draw()
-        playerAttributesToDisplay = ["Cash", "Damage", "Level"]
-        for number, attribute in enumerate(playerAttributesToDisplay):
-            drawText(self.playerStatsBoxSurface, attribute, WHITE, 30, False, (20 + 150 * number), 180)
-        self.playerCashBox = pg.Rect(85, 170, 60, 45)
+        drawText(self.playerStatsBoxSurface, "Ship Status", LIGHT_BLUE, 30, True, 220, 18)
+        self.playerHealthBar = StatsBar(GREEN, RED, 20, 60, self.playerStatsBoxSurface, 400, 20, self.player.currentHP, self.player.maxHP, "HP", 220, 62, True)
+        self.playerHealthBar.draw("Healthbar")
+        self.playerEXPBar = StatsBar(BLUE, BLACK, 20, 120, self.playerStatsBoxSurface, 400, 20, self.player.currentEXP, self.player.maxExp, "EXP", 220, 122, True)
+        self.playerEXPBar.draw("EXPbar")
+        drawText(self.playerStatsBoxSurface, "Cash", WHITE, 30, False, 20, 182.5)
+        drawText(self.playerStatsBoxSurface, "Damage", WHITE, 30, False, 152.5, 182.5)
+        drawText(self.playerStatsBoxSurface, "Lvl", WHITE, 30, False, 320, 182.5)
+        self.playerCashBox = pg.Rect(85, 170, 50, 45)
         self.playerCashBoxSurface = self.playerStatsBoxSurface.subsurface(self.playerCashBox)
         self.playerCashBoxSurface.fill(BLACK)
-        self.playerCashBoxRect = pg.Rect(80, 165, 70, 55)
+        self.playerCashBoxRect = pg.Rect(80, 165, 60, 55)
         pg.draw.rect(self.playerStatsBoxSurface, WHITE, self.playerCashBoxRect, width = 5)
-        drawText(self.playerCashBoxSurface, str(self.player.cash), LIGHT_GREEN, (30 if len(str(self.player.cash)) <= 4 else 22), True, 30, 12.5)
+        cashString = str(self.player.cash)
+        drawText(self.playerCashBoxSurface, cashString, LIGHT_GREEN, 30 if len(cashString) < 4 else 30 - len(cashString) - 1, True, 25, 12.5)
+        self.playerDamageBox = pg.Rect(250, 170, 50, 45)
+        self.playerDamageBoxSurface = self.playerStatsBoxSurface.subsurface(self.playerDamageBox)
+        self.playerDamageBoxSurface.fill(BLACK)
+        self.playerDamageBoxRect = pg.Rect(245, 165, 60, 55)
+        pg.draw.rect(self.playerStatsBoxSurface, WHITE, self.playerDamageBoxRect, width = 5)
+        damageString = str(self.player.damage)
+        drawText(self.playerDamageBoxSurface, damageString, RED, 30 if len(damageString) < 4 else 30 - len(damageString) - 1, True, 25, 12.5)
+        self.playerLevelBox = pg.Rect(365, 170, 50, 45)
+        self.playerLevelBoxSurface = self.playerStatsBoxSurface.subsurface(self.playerLevelBox)
+        self.playerLevelBoxSurface.fill(BLACK)
+        self.playerLevelBoxRect = pg.Rect(360, 165, 60, 55)
+        pg.draw.rect(self.playerStatsBoxSurface, WHITE, self.playerLevelBoxRect, width = 5)
+        levelString = str(self.player.level)
+        drawText(self.playerLevelBoxSurface, levelString, YELLOW, 30 if len(levelString) < 4 else 30 - len(levelString) - 1, True, 25, 12.5)
 
+    def drawUpgradeBox(self):
+        '''Method that draws the boxes for upgrades'''
+        self.upgradeBox = pg.Rect(80, 365, 440, 150)
+        self.upgradeBoxSurface = self.interfaceBackgroundSurface.subsurface(self.upgradeBox)
+        self.upgradeBoxSurface.fill(LIGHT_GREY)
+        self.upgradeBoxRect = pg.Rect(75, 360, 450, 155)
+        pg.draw.rect(self.interfaceBackgroundSurface, WHITE, self.upgradeBoxRect, width = 5)
+        drawText(self.upgradeBoxSurface, "Upgrade Enhancement Modules", YELLOW, 30, True, 220, 18)
+        # TODO Upgrade Buttons
+
+    def drawEnemyStats(self):
+        '''Method that draws enemy interface'''
+        self.enemyStatsBox = pg.Rect(80, 550, 440, 160)
+        self.enemyStatsBoxSurface = self.interfaceBackgroundSurface.subsurface(self.enemyStatsBox)
+        self.enemyStatsBoxSurface.fill(SUPER_DARK_GREY)
+        self.enemyStatsBoxRect = pg.Rect(75, 545, 450, 165)
+        pg.draw.rect(self.interfaceBackgroundSurface, WHITE, self.enemyStatsBoxRect, width = 5)
+        drawText(self.enemyStatsBoxSurface, "Enemy Analytical Engine", RED, 30, True, 220, 18)
+        # Check if the mouse has touched an enemy
+        mouseLocation = pg.mouse.get_pos()
+        for enemy in self.enemies:
+            if enemy.rect.collidepoint(mouseLocation):
+                drawText(self.enemyStatsBoxSurface, enemy.name, WHITE, 30, False, 20, 50)
+                self.enemyHealthBar = StatsBar(PURPLE, BLACK, 20, 100, self.enemyStatsBoxSurface, 400, 20, enemy.currentHP, enemy.maxHP, "HP", 220, 102, True)
+                self.enemyHealthBar.draw("Enemybar")
 
     def startNewGame(self): 
         '''Setup for new game'''
@@ -349,7 +398,7 @@ class Game: # Main class that initialises everything required for the game, mana
         self.allSprites.add(bloon)
         self.enemies.add(bloon)
 
-# Global procedures which lie outside the game class
+# Global procedures which lie outside the game class - programming to an interface
         
 def drawText(surface, text, color, size, midtop, x, y):
     font = pg.font.Font(FONT_NAME, size)
